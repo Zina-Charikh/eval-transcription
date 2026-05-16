@@ -99,21 +99,43 @@ from difflib import SequenceMatcher
 
 def best_window(cc_words, start, ref_words, slack=8):
     """
-    Trouve la fenêtre cc_words[start:start+k] la plus proche de ref_words.
-    On teste k dans [len(ref)-slack .. len(ref)+slack].
-    Score = similarité globale uniquement.
+    Prend len(ref) mots par défaut.
+    Si le dernier mot de la fenêtre ne ressemble pas du tout au dernier
+    mot de la REF, on essaie d'étendre jusqu'à trouver un meilleur match
+    ou d'atteindre slack mots supplémentaires.
     """
     n = len(ref_words)
-    ref_clean  = [w.lower().strip('.,;:!?«»') for w in ref_words]
-    best_score, best_k = -1, n
-    for k in range(max(1, n - slack), n + slack + 1):
+    ref_last = ref_words[-1].lower().strip('.,;:!?«»') if ref_words else ""
+
+    # Fenêtre de base
+    base = cc_words[start: start + n]
+    if not base:
+        return n
+
+    # Score du dernier mot de base vs dernier mot REF
+    base_last = base[-1].lower().strip('.,;:!?«»') if base else ""
+    base_score = SequenceMatcher(None, ref_last, base_last).ratio()
+
+    # Si le dernier mot est déjà bon (>0.5), on garde la fenêtre de base
+    if base_score >= 0.5:
+        return n
+
+    # Sinon on cherche dans les slack mots suivants un meilleur dernier mot
+    best_k     = n
+    best_score = base_score
+    for extra in range(1, slack + 1):
+        k = n + extra
         window = cc_words[start: start + k]
-        if not window:
-            continue
-        win_clean = [w.lower().strip('.,;:!?«»') for w in window]
-        score = SequenceMatcher(None, ref_clean, win_clean).ratio()
+        if not window or start + k > len(cc_words):
+            break
+        w_last = window[-1].lower().strip('.,;:!?«»')
+        score  = SequenceMatcher(None, ref_last, w_last).ratio()
         if score > best_score:
-            best_score, best_k = score, k
+            best_score = score
+            best_k     = k
+        if score >= 0.8:  # assez bon, on s'arrête
+            break
+
     return best_k
 
 cursor = 0
