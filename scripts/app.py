@@ -268,11 +268,6 @@ with tab1:
 # ══════════════════════════════════════════════════════════════════
 with tab2:
 
-    # Lire le segment actif depuis query params (mis à jour par le JS)
-    qp = st.query_params
-    auto_seg = int(qp.get("seg", 0))
-    auto_seg = max(0, min(auto_seg, n - 1))
-
     # Sélecteurs en haut
     ctrl1, ctrl2 = st.columns([1, 3])
     with ctrl1:
@@ -288,29 +283,12 @@ with tab2:
         labels = [f"Seg.{r['ID']:02d}  ·  {r['Début']} → {r['Fin']}  ·  "
                   f"WER {r[col_wer_v]}%  ·  {r[col_q_v]}"
                   for _, r in df.iterrows()]
-
-        nav1, nav2, nav3 = st.columns([1, 8, 1])
-        with nav1:
-            if st.button("◀", key="prev_seg") and auto_seg > 0:
-                st.query_params["seg"] = auto_seg - 1
-                st.rerun()
-        with nav2:
-            sel = st.selectbox("Segment :", labels, index=auto_seg, key="seg_sel")
-        with nav3:
-            if st.button("▶", key="next_seg") and auto_seg < n - 1:
-                st.query_params["seg"] = auto_seg + 1
-                st.rerun()
+        sel = st.selectbox("Segment :", labels, key="seg_sel")
 
     seg_idx = labels.index(sel)
-    if seg_idx != auto_seg:
-        st.query_params["seg"] = seg_idx
     row     = df.iloc[seg_idx]
     cb      = COLORS_Q[row[col_q_v]]
     stt_txt = str(row[col_stt_v]) if row[col_stt_v] else ""
-
-    # Timestamps de tous les segments pour le JS
-    seg_times = [(float(r["start_s"]), float(r["end_s"])) for _, r in df.iterrows()]
-    seg_times_js = str(seg_times)
 
     st.divider()
 
@@ -318,42 +296,8 @@ with tab2:
 
     with vid_col:
         if os.path.exists(VIDEO_PATH):
-            import base64
             with open(VIDEO_PATH, "rb") as vf:
-                vid_b64 = base64.b64encode(vf.read()).decode()
-
-            # Player HTML5 custom avec sync segment → selectbox via query params
-            player_html = f"""
-            <video id="vp" controls style="width:100%;border-radius:10px;background:#000;max-height:300px"
-                   src="data:video/mp4;base64,{vid_b64}"
-                   currentTime="{int(row['start_s'])}">
-            </video>
-            <script>
-            const segs = {seg_times_js};
-            const vp   = document.getElementById('vp');
-            vp.currentTime = {int(row['start_s'])};
-            let lastSeg = {seg_idx};
-            vp.addEventListener('timeupdate', () => {{
-                const t = vp.currentTime;
-                for (let i = 0; i < segs.length; i++) {{
-                    if (t >= segs[i][0] && t < segs[i][1]) {{
-                        if (i !== lastSeg) {{
-                            lastSeg = i;
-                            // Met à jour l'URL query param → Streamlit relit
-                            const url = new URL(window.parent.location.href);
-                            url.searchParams.set('seg', i);
-                            window.parent.history.replaceState(null, '', url.toString());
-                            // Force le rechargement Streamlit
-                            window.parent.postMessage({{type:'streamlit:setComponentValue', value: i}}, '*');
-                        }}
-                        break;
-                    }}
-                }}
-            }});
-            </script>
-            """
-            import streamlit.components.v1 as components
-            components.html(player_html, height=320)
+                st.video(vf.read(), start_time=int(row["start_s"]))
             st.caption(f"▶ Seg.{row['ID']:02d} · {row['Début']} → {row['Fin']}")
         else:
             st.warning("Vidéo introuvable")
